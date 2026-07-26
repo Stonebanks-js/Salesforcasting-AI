@@ -61,17 +61,41 @@ Oracle Always Free VM (Docker Compose):
    `NEXT_PUBLIC_API_URL=https://<api>.onrender.com/api/v1`.
 3. Deploy. (Framework preset Next.js; no custom config needed.)
 
-### 3.4 Infra VM — Oracle Always Free
-1. Create Ampere A1 (or AMD micro) instance, Ubuntu 24.04; open ports
-   22 (SSH, your IP only) and 9094 (Kafka SASL/TLS, API egress IP or 0.0.0.0/0
-   for pilot with SASL required).
-2. Install Docker + compose plugin.
-3. `git clone <repo>; cd infra; cp env.example .env` and fill values.
-4. `docker compose up -d kafka producers mlflow`
-5. Nightly batch: host cron → `0 6 * * * cd infra && docker compose --profile batch run --rm pipeline`
-6. Kafka exposure for the API: enable SASL/SSL listener on 9094
-   (compose override file `docker-compose.prod.yml` below); the local PLAINTEXT
-   listener stays internal.
+## 3.4 Infra VM — Oracle Always Free
+
+**Reduced pilot topology (decisions 025–026):** Kafka + 5 producers + nightly batch
+only. **No MLflow container** (NullTracker: models persist to disk, metrics to
+Supabase). **No Keepa** (confirmed paid).
+
+**Provisioning (exact steps):**
+1. Sign up at https://www.oracle.com/cloud/free/ → "Start for free". Choose a home
+   region near your users (immutable). Card required for identity verification only
+   (temporary ~$1 hold; never charged unless you manually upgrade to PAYG).
+2. Console → Compute → Instances → Create instance: Ubuntu 24.04; shape
+   **VM.Standard.A1.Flex** (2 OCPU/12GB, Always Free) — or **VM.Standard.E2.1.Micro**
+   (AMD) if A1 shows "out of capacity".
+3. Networking: new VCN + public subnet + public IPv4. SSH: "Generate a key pair for
+   me" → **download the private key** (this is the VM credential).
+4. VCN → Security Lists → Ingress: TCP 22 (your IP only), TCP 9094 (0.0.0.0/0,
+   SASL-protected).
+5. Connect: `ssh -i private.key ubuntu@<public-ip>`.
+
+**Setup on the VM:**
+```bash
+sudo apt update && sudo apt install -y docker.io docker-compose-v2
+sudo usermod -aG docker ubuntu   # then log out/in
+git clone https://github.com/Stonebanks-js/Salesforcasting-AI.git
+cd Salesforcasting-AI/infra && cp env.example .env && nano .env
+#   Fill: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, FRED_API_KEY, TICKETMASTER_API_KEY
+docker compose up -d kafka producers
+docker compose --profile batch run --rm pipeline   # smoke-test one batch
+(crontab -l; echo "0 6 * * * cd ~/Salesforcasting-AI/infra && docker compose --profile batch run --rm pipeline") | crontab -
+```
+
+**Producer config** (`infra/config/producers.json`): default enables weather,
+holidays, macro. Add `"trends"`, `"events"` to `enabled_signals` when their keys
+are filled in `.env` (trends is keyless; events needs TICKETMASTER_API_KEY).
+Keep `"marketplace"` absent (deferred, decision 025).
 
 **`infra/docker-compose.prod.yml` (apply with `-f docker-compose.yml -f docker-compose.prod.yml`):**
 ```yaml
@@ -92,7 +116,8 @@ services:
 |---|---|---|
 | Supabase service-role | Render env, VM .env | frontend, git |
 | Supabase JWT secret | Render env | git |
-| FRED/Ticketmaster/Keepa keys | VM .env (producers only) | API, frontend, git |
+| FRED/Ticketmaster keys | VM .env (producers only) | API, frontend, git |
+| ~~Keepa key~~ (deferred, decision 025) | — | — |
 | Kafka SCRAM password | VM .env + Render env | git |
 
 ## 5. Rollback & Failure Playbook

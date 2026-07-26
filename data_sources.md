@@ -69,18 +69,17 @@ If a free tier is projected to be exceeded, it must be flagged here — never si
   mark `stale`; model proceeds without event features
 - **Coverage note:** Weak outside major markets — treated as supplementary signal
 
-### 6. Keepa — Amazon Marketplace (OPT-IN, capped)
+### 6. Keepa — Amazon Marketplace — ❌ REMOVED FOR PILOT (Phase 14 finding)
 - **URL:** https://keepa.com/#!api
-- **Cost:** Free tier; **free API key required**
-- **Rate limits:** Token-based; free tier grants a small token allotment refilling
-  ≈ 1 token/minute; each product query costs ≥1 token
-- **Auth:** API key (env var `KEEPA_API_KEY`)
-- **Data used:** Price history + Best-Sellers-Rank history per tracked ASIN
-- **Refresh cadence:** Once daily per ASIN (strict token bucket)
-- **Pilot-scale projection:** **Hard cap: 10 ASINs per user** → 10 users × 10 ASINs ×
-  1 token/day = 100 tokens/day — **feasible only with the cap and daily batching ⚠️**
-- **Fallback on token exhaustion:** Skip cycle, serve last-known (7-day TTL), mark
-  `degraded`, surface quota message in UI. Opt-in toggle; off by default
+- **Cost:** ~~Free tier~~ → **CONFIRMED PAID (2026-07-26):** token packages must be
+  purchased; no usable recurring free allotment. Found during credential collection —
+  the Phase 2 assumption of a workable free token tier does not hold.
+- **Decision (025):** marketplace signal **deferred to v2**. Producer code remains in
+  the repo (`producers/marketplace/`), is disabled by default, and the feature was
+  opt-in only — removal is config-only, zero architecture impact.
+- **V2 alternatives (documented):** Amazon SP-API (free, official — requires an approved
+  Professional Seller account; use only if a pilot user has one), or paid Keepa/Rainforest.
+- **Fallback:** N/A — signal absent by default; models never depended on it (opt-in).
 
 ### 7. User Sales Data (CORE — always required)
 - **Source:** CSV upload via dashboard (schema: `date, sku, product_name, quantity,

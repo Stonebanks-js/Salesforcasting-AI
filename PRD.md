@@ -61,7 +61,10 @@ explainable external drivers.
 - FR-3.4 Search trends: pytrends — keyword interest per product category, with backoff/retry.
 - FR-3.5 Macro: FRED — configurable macro series (e.g., CPI, consumer sentiment).
 - FR-3.6 Events: Ticketmaster Discovery free tier — local events near user coordinates.
-- FR-3.7 Marketplace: Keepa free tier — Amazon price/BSR history; **opt-in per user, hard cap of 10 tracked ASINs per user**, token-rate-managed.
+- FR-3.7 Marketplace: ~~Keepa free tier~~ **DEFERRED TO V2 (Phase 14, decision 025)** —
+  Keepa confirmed paid during credential collection; no viable free alternative.
+  Producer code retained, disabled by default; SP-API is the documented free path
+  for users holding a Professional Seller account.
 - FR-3.8 Every producer implements: rate-limit handling, caching of last-known values,
   and graceful degradation (forecast proceeds with stale/missing signal + user notification).
 
