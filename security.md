@@ -28,6 +28,12 @@ leakage, malicious file uploads, and quota abuse.
   `test_security_audit.py` in CI.
 - Repo is scanned for secret patterns (AWS keys, private key blocks, live JWTs,
   generic secret assignments) on every test run.
+- **Serverless mode (Phase 15, decision 028):** producers and the nightly pipeline
+  hold the Supabase **service-role key** in GitHub Secrets (encrypted, masked in
+  logs, never printed). This supersedes the Kafka-mediated boundary (decision 015)
+  for the pilot — CI runners are ephemeral server-side compute with the same trust
+  level as the retired VM path. `signal_events` has RLS with no user policies:
+  service-role only, invisible to all authenticated users.
 
 ### 2.3 Input Validation & Uploads
 - Pydantic schemas on every request body; `extra="forbid"` on PATCH payloads.

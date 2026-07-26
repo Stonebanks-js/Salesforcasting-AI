@@ -1,0 +1,31 @@
+name: Signal Producers (serverless)
+
+# Runs one producer cycle every 6h; signals land in Supabase signal_events.
+# Free: unlimited Actions minutes on public repos (decision 027).
+on:
+  schedule:
+    - cron: "17 */6 * * *"   # offset from the top of the hour
+  workflow_dispatch:          # manual trigger for testing
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx pytrends supabase
+      - name: Run one producer cycle
+        working-directory: producers
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+        run: python runner_ci.py

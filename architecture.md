@@ -1,8 +1,29 @@
 # TrendCast AI — Architecture
 
-**Version:** 1.0 (Phase 3 output)
-**Status:** Awaiting approval
+**Version:** 1.1 (Phase 15 amendment)
+**Status:** Live
 **Constraint:** 100% free-tier / open-source stack at pilot scale (~10 users, ~500 SKUs)
+
+> ## ⚠️ Phase 15 Amendment — Serverless Pilot Topology (decision 027)
+>
+> The Oracle VM hosting path proved unworkable; free VM alternatives are inadequate.
+> **The pilot runs WITHOUT Kafka, Spark, Delta, or a VM:**
+>
+> - **Producers** run as a GitHub Actions scheduled workflow (every 6h, unlimited free
+>   minutes on public repos), writing signal envelopes directly to a Supabase
+>   **`signal_events`** table via a `SupabasePublisher` (same `Publisher` protocol as
+>   the Kafka producer — producers' core logic is unchanged).
+> - **The nightly pipeline** runs as a second GitHub Actions workflow
+>   (`pipeline/local_nightly.py`): reads `sales_daily` + `signal_events` from Supabase,
+>   executes the **same unit-tested pure transforms and ML code**, and upserts
+>   `forecasts`/`forecast_factors` back into Supabase. No JVM, no broker, no VM.
+> - **Backend** runs with `KAFKA_ENABLED=false`; sales are read by the pipeline
+>   directly from `sales_daily` (they were always durable there first — decision 010).
+> - **Final pilot stack: Vercel + Render + Supabase + GitHub Actions** — $0/month.
+>
+> The Kafka/Spark/Delta implementation below remains in the repo, fully tested, as the
+> **v2 scale-up path** when volume justifies a broker and a lakehouse. Sections 1–9
+> describe that target architecture; the pilot is its serverless projection.
 
 ---
 

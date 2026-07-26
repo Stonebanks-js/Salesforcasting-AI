@@ -73,8 +73,8 @@ def build_producers(config: dict, publisher, cache: DiskCache) -> list:
     return producers
 
 
-def run_cycle(publisher, cache: DiskCache) -> None:
-    config = load_config()
+def run_cycle(publisher, cache: DiskCache, config: dict | None = None) -> None:
+    config = config or load_config()
     for producer in build_producers(config, publisher, cache):
         try:
             report = producer.run_once()

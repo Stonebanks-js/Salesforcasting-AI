@@ -56,13 +56,14 @@
 - [x] Confidence reported (per-phase)
 - [ ] **User approval for release — Phase 13**
 
-## Pre-Deploy Checklist (operator)
+## Pre-Deploy Checklist (operator) — serverless topology (Phase 15)
 
-- [ ] Supabase project created, migration applied, bucket created
-- [ ] Render service deployed, env vars set, `/api/v1/health` 200
+- [ ] Supabase project created, **both migrations applied** (0001, 0002), bucket created
+- [ ] Render service deployed, env vars set (`KAFKA_ENABLED=false`), `/api/v1/health` 200
 - [ ] Vercel deployed, env vars set, login flow works
-- [ ] Oracle Always Free VM: Docker up, Kafka SASL exposed, producers running
-- [ ] Cron: nightly batch scheduled; first run completed
+- [ ] GitHub Secrets set: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FRED_API_KEY`, `TICKETMASTER_API_KEY`
+- [ ] Producers workflow run manually once → signal badges show live
+- [ ] Nightly workflow run manually once → logs show `status: ok`, forecasts > 0
 - [ ] Demo data → forecast visible on dashboard
-- [ ] Signal badges show live/stale correctly
 - [ ] UptimeRobot (or equivalent) on `/api/v1/health`
+- [ ] ~~Oracle VM~~ — REMOVED (decision 027: serverless pipeline via GitHub Actions)

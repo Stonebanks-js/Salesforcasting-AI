@@ -16,15 +16,22 @@ LightGBM quantile models → a Next.js dashboard. **Total pilot running cost: $0
 
 ## Architecture
 
+**Pilot (serverless, $0/month — decision 027):**
+
 ```
-External signals (6 free sources) ──► Kafka producers ──► Bronze (Delta)
-CSV sales upload ──► FastAPI ──┐                            │
-                               ▼                            ▼
-                        Supabase Postgres ◄── publish ── Silver → Gold
-                               ▲                     (features → train → infer)
-                               │                     LightGBM q10/q50/q90
-                        Next.js dashboard          + seasonal-naive fallback
+5 free signal sources ──► GitHub Actions (producers, 4×/day)
+                               │ writes signal_events
+CSV sales upload ──► FastAPI ──▼──► Supabase Postgres
+(Render)                        ▲      │ reads sales + signals
+                                │      ▼
+                        Next.js dashboard ◄── GitHub Actions (nightly):
+                        (Vercel)             transforms → LightGBM train
+                                             → infer → upsert forecasts
 ```
+
+Four services: **Vercel + Render + Supabase + GitHub Actions**. No VM, no
+broker, no JVM. The full Kafka + Spark + Delta Lake implementation remains in
+the repo (`infra/`, `pipeline/jobs/`) as the v2 scale-up path.
 
 Graceful degradation is a hard requirement: if any signal feed dies, forecasts
 fall back to cached values or a baseline model — the dashboard always works.
@@ -35,12 +42,12 @@ fall back to cached values or a baseline model — the dashboard always works.
 |---|---|
 | `frontend/` | Next.js 16 + TypeScript + Tailwind dashboard (Vercel) |
 | `backend/` | FastAPI REST API (Render) — auth, uploads, forecasts, settings |
-| `producers/` | 6 Kafka signal producers + shared quota/backoff/cache lib |
-| `pipeline/` | Spark + Delta Lake jobs: Bronze → Silver → Gold → publish |
+| `producers/` | Signal producers + shared quota/backoff/cache lib (GitHub Actions cron) |
+| `pipeline/` | `local_nightly.py` serverless pipeline + pure transforms (Spark jobs preserved for v2) |
 | `ml/` | LightGBM quantile models, backtest, selection, MLflow tracking |
 | `integration/` | Cross-codebase seam tests + tenant isolation + security audit |
-| `infra/` | docker-compose (Kafka, producers, pipeline, MLflow) |
-| `supabase/` | Postgres migrations (schema + RLS) |
+| `infra/` | docker-compose (Kafka, producers, pipeline, MLflow) — v2 scale-up path |
+| `supabase/` | Postgres migrations (schema + RLS + signal_events bus) |
 
 ## Quick Start (local dev)
 

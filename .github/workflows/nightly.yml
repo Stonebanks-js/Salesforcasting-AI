@@ -1,0 +1,30 @@
+name: Nightly Forecast Pipeline (serverless)
+
+# Reads sales + signals from Supabase, trains LightGBM per SKU, and upserts
+# forecasts into the serving tables. Free: unlimited minutes (public repo).
+on:
+  schedule:
+    - cron: "42 6 * * *"     # daily 06:42 UTC, after producers' 06:17 run
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install lightgbm numpy pandas supabase
+      - name: Run nightly pipeline
+        working-directory: pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONPATH: ${{ github.workspace }}/pipeline:${{ github.workspace }}
+        run: python local_nightly.py

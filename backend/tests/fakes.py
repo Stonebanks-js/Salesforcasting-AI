@@ -84,6 +84,10 @@ class FakeQuery:
         self._filters.append(("lte", col, val))
         return self
 
+    def lt(self, col: str, val) -> "FakeQuery":
+        self._filters.append(("lt", col, val))
+        return self
+
     def ilike(self, col: str, pattern: str) -> "FakeQuery":
         self._filters.append(("ilike", col, pattern))
         return self
@@ -114,6 +118,8 @@ class FakeQuery:
             if op == "gte" and (cell is None or str(cell) < str(val)):
                 return False
             if op == "lte" and (cell is None or str(cell) > str(val)):
+                return False
+            if op == "lt" and (cell is None or str(cell) >= str(val)):
                 return False
             if op == "ilike":
                 needle = str(val).strip("%").lower()

@@ -1,144 +1,124 @@
 # TrendCast AI — Deployment
 
-**Version:** 1.0 (Phase 12 output)
-**Status:** Awaiting approval
+**Version:** 2.0 (Phase 15 — serverless pilot topology, decision 027)
+**Status:** Live
 
 ---
 
-## 1. Hosted Kafka Vendor Decision (fact-checked 2026-07-26)
-
-| Candidate | Finding | Verdict |
-|---|---|---|
-| Upstash Kafka | Docs & pricing pages return **404 — product appears discontinued** | ❌ Rejected |
-| Redpanda Serverless | Pay-as-you-go with a **30-day trial only — no permanent free tier** | ❌ As "free"; documented as scale-up path |
-| **Oracle Cloud Always Free** | **Confirmed live:** Always Free tier includes Ampere A1 (ARM) + AMD Compute VMs, unlimited time | ✅ **Selected** |
-
-**Decision:** the infra layer (Kafka, producers, pipeline, MLflow) runs on an
-**Oracle Always Free VM** using the repo's existing `infra/docker-compose.yml`.
-Everything user-facing stays on managed free tiers. Caveat flagged honestly:
-Always Free capacity is subject to availability at signup and ARM images must
-be multi-arch (`python:3.11-slim`, `apache/kafka`, `mlflow` all publish arm64 —
-verified in their manifests; use the AMD Always Free micro instance as fallback).
-
-## 2. Deployment Topology (pilot)
+## 1. Pilot Topology (serverless, $0/month)
 
 ```
 Users
   │
-  ├─► Vercel (Hobby, free)            → Next.js frontend (static prerender + client data)
-  ├─► Render (free web service)       → FastAPI backend (uvicorn)
-  └─► Supabase (free tier)            → Postgres + Auth + Storage
+  ├─► Vercel (Hobby, free)       → Next.js frontend
+  ├─► Render (free web service)  → FastAPI backend
+  └─► Supabase (free tier)       → Postgres + Auth + Storage
+                                     (+ signal_events bus)
 
-Oracle Always Free VM (Docker Compose):
-  ├─ Kafka (KRaft, SASL/TLS exposed for the API's sales.raw producer)
-  ├─ producers (6 signal producers, 6h cycle)
-  ├─ pipeline (nightly batch, cron-triggered on the VM)
-  └─ MLflow (internal-only, no public exposure)
+GitHub Actions (unlimited free minutes — public repo):
+  ├─ producers.yml (cron 4×/day) → signal fetching → Supabase signal_events
+  └─ nightly.yml (cron daily)    → transforms + LightGBM train/infer → forecasts
 ```
 
-## 3. Step-by-Step Deployment
+**No VM, no Kafka, no Spark, no Docker required anywhere.** The Kafka/Spark/Delta
+stack remains in `infra/` + `pipeline/jobs/` as the v2 scale-up path (see §6).
 
-### 3.1 Supabase
+## 2. Step-by-Step Deployment
+
+### 2.1 Supabase
 1. Create a free project at supabase.com.
-2. SQL Editor → run `supabase/migrations/0001_init.sql`.
-3. Authentication → enable Email provider. (For pilot: disable "Confirm email"
-   OR configure SMTP; default is confirm-email.)
+2. SQL Editor → run `supabase/migrations/0001_init.sql`, then
+   `supabase/migrations/0002_signal_events.sql`.
+3. Authentication → enable Email provider (for pilot: disable "Confirm email"
+   or configure SMTP).
 4. Storage → create private bucket `sales-uploads`.
 5. Record: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
    `SUPABASE_JWT_SECRET` (Settings → API).
 
-### 3.2 Backend — Render (free)
+### 2.2 Backend — Render (free)
 1. New → Web Service → connect repo → root dir `backend`.
 2. Build: `pip install -r requirements.txt`
 3. Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-4. Env: all Supabase vars + `KAFKA_BOOTSTRAP_SERVERS=<vm-ip>:9094`
-   + `KAFKA_ENABLED=true` + `CORS_ORIGINS=https://<app>.vercel.app`.
-5. Free-tier sleep: first request after idle takes ~30s (accepted, NFR note).
+4. Env: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET`,
+   `KAFKA_ENABLED=false`, `CORS_ORIGINS=https://<app>.vercel.app`.
+5. Health check path: `/api/v1/health`.
+6. Free-tier sleep: first request after idle takes ~30s (accepted).
 
-### 3.3 Frontend — Vercel (Hobby)
-1. Import repo → root dir `frontend`.
-2. Env: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-   `NEXT_PUBLIC_API_URL=https://<api>.onrender.com/api/v1`.
-3. Deploy. (Framework preset Next.js; no custom config needed.)
+### 2.3 Frontend — Vercel (Hobby)
+1. Import repo → root dir `frontend` (framework preset Next.js auto-detected).
+2. Env (all public/client-side by design):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_API_URL=https://<api>.onrender.com/api/v1`
+     — set this AFTER the first Render deploy (URL only known then), then
+     redeploy; or set a predictable Render service name first.
+3. Deploy. Preview deployments inherit env vars; keep production values
+   identical for pilot (no separate preview config needed).
 
-## 3.4 Infra VM — Oracle Always Free
+### 2.4 GitHub Actions (producers + nightly)
+1. Repo → Settings → Secrets and variables → Actions → add:
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FRED_API_KEY`,
+   `TICKETMASTER_API_KEY`.
+2. Workflows are already in the repo (`.github/workflows/producers.yml`,
+   `nightly.yml`) — schedules activate automatically.
+3. First run: Actions tab → "Signal Producers (serverless)" → **Run workflow**
+   (workflow_dispatch), then "Nightly Forecast Pipeline (serverless)" → Run.
+4. Schedules: producers `17 */6 * * *` (4×/day), nightly `42 6 * * *` (06:42 UTC).
 
-**Reduced pilot topology (decisions 025–026):** Kafka + 5 producers + nightly batch
-only. **No MLflow container** (NullTracker: models persist to disk, metrics to
-Supabase). **No Keepa** (confirmed paid).
+### 2.5 Post-deploy verification
+1. `curl https://<api>.onrender.com/api/v1/health` → `{"status":"ok"}`.
+2. Sign up on the Vercel URL → onboarding → **Generate demo data** → upload
+   reaches `loaded` (Data page shows row count).
+3. Actions tab → run producers workflow → Settings page signal dots turn green
+   (weather/holidays/trends/macro/events `live` in `signal_status`).
+4. Actions tab → run nightly workflow → logs show
+   `nightly complete: {'status': 'ok', 'forecasts': N}`.
+5. Dashboard → select demo SKUs → forecast cards render with bands, MAPE,
+   factors, and signal health.
+6. **Quota-hit playbook:** a source hitting its free limit flips its badge to
+   `stale`/`degraded` automatically — no action needed; forecasts continue on
+   cached/baseline paths. Investigate only if a badge stays degraded > 2 days.
 
-**Provisioning (exact steps):**
-1. Sign up at https://www.oracle.com/cloud/free/ → "Start for free". Choose a home
-   region near your users (immutable). Card required for identity verification only
-   (temporary ~$1 hold; never charged unless you manually upgrade to PAYG).
-2. Console → Compute → Instances → Create instance: Ubuntu 24.04; shape
-   **VM.Standard.A1.Flex** (2 OCPU/12GB, Always Free) — or **VM.Standard.E2.1.Micro**
-   (AMD) if A1 shows "out of capacity".
-3. Networking: new VCN + public subnet + public IPv4. SSH: "Generate a key pair for
-   me" → **download the private key** (this is the VM credential).
-4. VCN → Security Lists → Ingress: TCP 22 (your IP only), TCP 9094 (0.0.0.0/0,
-   SASL-protected).
-5. Connect: `ssh -i private.key ubuntu@<public-ip>`.
-
-**Setup on the VM:**
-```bash
-sudo apt update && sudo apt install -y docker.io docker-compose-v2
-sudo usermod -aG docker ubuntu   # then log out/in
-git clone https://github.com/Stonebanks-js/Salesforcasting-AI.git
-cd Salesforcasting-AI/infra && cp env.example .env && nano .env
-#   Fill: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, FRED_API_KEY, TICKETMASTER_API_KEY
-docker compose up -d kafka producers
-docker compose --profile batch run --rm pipeline   # smoke-test one batch
-(crontab -l; echo "0 6 * * * cd ~/Salesforcasting-AI/infra && docker compose --profile batch run --rm pipeline") | crontab -
-```
-
-**Producer config** (`infra/config/producers.json`): default enables weather,
-holidays, macro. Add `"trends"`, `"events"` to `enabled_signals` when their keys
-are filled in `.env` (trends is keyless; events needs TICKETMASTER_API_KEY).
-Keep `"marketplace"` absent (deferred, decision 025).
-
-**`infra/docker-compose.prod.yml` (apply with `-f docker-compose.yml -f docker-compose.prod.yml`):**
-```yaml
-services:
-  kafka:
-    environment:
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,SASL_SSL://:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,SASL_SSL://<vm-public-ip>:9094
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SASL_SSL:SASL_SSL
-      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
-    ports:
-      - "9094:9094"
-```
-
-## 4. Secrets Inventory
+## 3. Secrets Inventory
 
 | Secret | Where it lives | Never in |
 |---|---|---|
-| Supabase service-role | Render env, VM .env | frontend, git |
+| Supabase service-role | Render env, **GitHub Secrets** | frontend, git |
 | Supabase JWT secret | Render env | git |
-| FRED/Ticketmaster keys | VM .env (producers only) | API, frontend, git |
+| FRED/Ticketmaster keys | **GitHub Secrets** (producers workflow) | API, frontend, git |
 | ~~Keepa key~~ (deferred, decision 025) | — | — |
-| Kafka SCRAM password | VM .env + Render env | git |
 
-## 5. Rollback & Failure Playbook
+**Rotation:** replace the value at the provider, update Render env (auto-redeploy)
+and/or GitHub Secrets (next workflow run picks it up). No code changes.
+
+## 4. Rollback & Failure Playbook
 
 - **Bad deploy:** Vercel/Render instant rollback to previous deployment.
-- **Nightly batch fails:** idempotent — next run catches up; dashboard keeps
-  serving last good forecasts (Supabase retains 7 runs).
-- **VM dies:** recreate from compose + git; Delta volume is the only state —
-  back up `/delta` daily to Supabase Storage via cron (`rclone`).
+- **Nightly workflow fails:** idempotent — re-run via workflow_dispatch; the
+  dashboard keeps serving last good forecasts (7-run retention).
+- **Workflow disabled after 60 days of repo inactivity:** GitHub auto-pauses
+  schedules on idle repos — any commit re-activates; note in ops runbook.
 - **Free-tier breach:** producers self-throttle; signal badges show degraded.
 
-## 6. Monitoring (free-tier compatible)
+## 5. Monitoring (free-tier compatible)
 
 - Render/Vercel built-in logs; Supabase dashboard metrics.
-- `signal_status` table = quota observability (surfaced in UI).
-- Optional: UptimeRobot free tier pinging `/api/v1/health` every 5 min
-  (also keeps Render warm).
+- GitHub Actions run history = pipeline observability (failed runs email you).
+- `signal_status` table = quota observability (surfaced in the UI).
+- Optional: UptimeRobot free tier on `/api/v1/health` (also keeps Render warm).
+
+## 6. V2 Scale-Up Path (preserved)
+
+When volume outgrows the serverless projection (many users, high-frequency
+signals), provision any Docker host and use the preserved stack:
+`infra/docker-compose.yml` (Kafka + producers + pipeline + MLflow) with the
+Spark jobs in `pipeline/jobs/`. Migration = point producers at the broker and
+run the Spark nightly instead of `local_nightly.py` — transform/ML code is shared.
 
 ## 7. Cost Statement
 
-Total monthly cost at pilot scale: **$0** (all services on genuine free tiers).
-Named ceilings: Render free instance sleeps; Oracle Always Free capacity
-subject to availability; Redpanda Serverless documented as the paid scale-up
-path if Kafka outgrows the VM.
+Total monthly cost at pilot scale: **$0** — Vercel Hobby, Render free web
+service, Supabase free tier, GitHub Actions (public repo, unlimited minutes).
+Named ceilings: Render sleeps when idle; GitHub pauses schedules on 60-day-idle
+repos; Supabase 500MB (13% used at pilot sizing).
+
