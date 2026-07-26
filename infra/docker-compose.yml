@@ -1,0 +1,82 @@
+name: trendcast
+
+services:
+  # --- Kafka (KRaft single broker; dev only — pilot deploy uses hosted free tier) ---
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: trendcast-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Signal producers (all six, toggle-driven via config snapshot) ---
+  producers:
+    build: ../producers
+    container_name: trendcast-producers
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PRODUCER_CONFIG_JSON: /config/producers.json
+      CACHE_DIR: /cache
+      PRODUCER_CYCLE_SECONDS: "21600"   # 6h cycle; per-source pacing is internal
+      FRED_API_KEY: ${FRED_API_KEY:-}
+      TICKETMASTER_API_KEY: ${TICKETMASTER_API_KEY:-}
+      KEEPA_API_KEY: ${KEEPA_API_KEY:-}
+    volumes:
+      - ./config/producers.json:/config/producers.json:ro
+      - producer-cache:/cache
+    restart: unless-stopped
+
+  # --- Spark + Delta nightly pipeline (local mode; batch only) ---
+  pipeline:
+    build: ../pipeline
+    container_name: trendcast-pipeline
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DELTA_ROOT: /delta
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - delta-data:/delta
+    # Run on a schedule from the host: `docker compose run --rm pipeline`
+    profiles: ["batch"]
+
+  # --- MLflow tracking + registry (open-source) ---
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.0
+    container_name: trendcast-mlflow
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root /mlruns
+    volumes:
+      - mlflow-data:/mlruns
+    profiles: ["batch"]
+
+volumes:
+  delta-data:
+  producer-cache:
+  mlflow-data:

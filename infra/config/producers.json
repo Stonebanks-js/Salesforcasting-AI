@@ -1,0 +1,11 @@
+{
+  "enabled_signals": ["weather", "holidays", "macro"],
+  "locations": [
+    {"user_id": "demo-user", "latitude": 30.2672, "longitude": -97.7431, "timezone": "America/Chicago"}
+  ],
+  "country_codes": ["US"],
+  "category_keywords": {},
+  "geo_by_user": {},
+  "series": ["CPIAUCSL", "UMCSENT", "UNRATE", "PCE"],
+  "asins_by_user": {}
+}

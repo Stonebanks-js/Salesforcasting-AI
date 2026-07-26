@@ -1,0 +1,4 @@
+pyspark[sql]>=3.5,<4.0
+delta-spark>=3.2
+pandas>=2.0
+supabase>=2.4
