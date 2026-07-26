@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+:root {
+  /* Okabe-Ito colorblind-safe categorical palette */
+  --c-series-1: #0072b2;
+  --c-series-2: #e69f00;
+  --c-series-3: #009e73;
+  --c-series-4: #d55e00;
+  --c-series-5: #cc79a7;
+  --band-opacity: 0.2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
