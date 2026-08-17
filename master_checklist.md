@@ -58,12 +58,34 @@
 
 ## Pre-Deploy Checklist (operator) — serverless topology (Phase 15)
 
-- [ ] Supabase project created, **both migrations applied** (0001, 0002), bucket created
+**Infrastructure**
+
+- [ ] Supabase project created, **all three migrations applied** in order
+      (0001, 0002, 0003), private `sales-uploads` bucket created
 - [ ] Render service deployed, env vars set (`KAFKA_ENABLED=false`), `/api/v1/health` 200
 - [ ] Vercel deployed, env vars set, login flow works
 - [ ] GitHub Secrets set: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FRED_API_KEY`, `TICKETMASTER_API_KEY`
-- [ ] Producers workflow run manually once → signal badges show live
-- [ ] Nightly workflow run manually once → logs show `status: ok`, forecasts > 0
-- [ ] Demo data → forecast visible on dashboard
+
+**Credential placement** (security.md §2.2 — a key outside its zone is a defect)
+
+- [ ] Service-role key is in GitHub Secrets **and nowhere else** — explicitly NOT on Render
+- [ ] JWT secret is on Render only
+- [ ] Vercel holds only `NEXT_PUBLIC_*` publishable values
+- [ ] `CORS_ORIGINS` is the exact Vercel origin — no placeholder, no trailing slash
+- [ ] `NEXT_PUBLIC_API_URL` ends in `/api/v1`, no trailing slash, **redeployed** after any change
+- [ ] No transcript / notes file containing pasted credentials exists in the working tree
+      (`Notes-*.txt` is gitignored; the repo is public)
+
+**First-user validation** — strictly ordered; see deployment.md §2.5.
+Until a user completes onboarding, both workflows succeed while doing nothing,
+so a green run before this point is not evidence of anything.
+
+- [ ] Preflight `OPTIONS` from the Vercel origin returns 204 with an ACAO header
+- [ ] Signed up → `auth.users` = 1
+- [ ] Onboarding completed → `profiles` = 1 **with non-null latitude/longitude**, `signal_settings` = 6
+- [ ] Demo data generated → upload `loaded`, `sales_daily` non-empty
+- [ ] Producers run → log shows non-empty `signals=[...]`, `signal_events` non-zero, badges live
+- [ ] Nightly run → `status: ok` with `forecasts > 0` (not `status: empty`)
+- [ ] Forecast visible on dashboard with bands, MAPE, and factors
 - [ ] UptimeRobot (or equivalent) on `/api/v1/health`
 - [ ] ~~Oracle VM~~ — REMOVED (decision 027: serverless pipeline via GitHub Actions)

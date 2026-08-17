@@ -1,13 +1,157 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+ * Design tokens — "calm instrument"
+ *
+ * Colour carries meaning, not decoration. Three groups:
+ *   1. Series   — categorical, for multi-SKU charts. Okabe-Ito, unchanged.
+ *   2. Surface  — ground/surface/ink/rule. The quiet majority of the UI.
+ *   3. Semantic — signal health and feedback. Never used decoratively.
+ *
+ * Themes resolve in three states: bare :root is the full light palette,
+ * prefers-color-scheme handles the un-stamped default, and [data-theme]
+ * lets an explicit choice win either way. Only tokens are redefined —
+ * never component rules — so nothing can render one theme's text on the
+ * other theme's ground.
+ * ------------------------------------------------------------------------- */
+
 :root {
-  /* Okabe-Ito colorblind-safe categorical palette */
+  /* 1. Okabe-Ito colorblind-safe categorical palette (charts only) */
   --c-series-1: #0072b2;
   --c-series-2: #e69f00;
   --c-series-3: #009e73;
   --c-series-4: #d55e00;
   --c-series-5: #cc79a7;
   --band-opacity: 0.2;
+
+  /* 2. Surfaces & text */
+  --c-ground: #f7f7f6;
+  --c-surface: #ffffff;
+  --c-raised: #f1f1ef;
+  --c-ink: #16181c;
+  --c-ink-soft: #40454d;
+  --c-muted: #70757d;
+  --c-rule: #dededb;
+  --c-rule-soft: #ebebe8;
+
+  /* Brand / action. Distinct from --c-series-1 so charts and buttons can
+     diverge per theme without one dragging the other. */
+  --c-brand: #0072b2;
+  --c-brand-hover: #005b8f;
+  --c-on-brand: #ffffff;
+  --c-brand-bg: #e7eef8;
+
+  /* 3. Semantic — signal health (live/stale/degraded/disabled) + feedback */
+  --c-live: #2f6b4f;
+  --c-live-bg: #e5f0ea;
+  --c-stale: #8a6210;
+  --c-stale-bg: #f8f1de;
+  --c-degraded: #a8331f;
+  --c-degraded-bg: #f9e9e6;
+  --c-disabled: #70757d;
+  --c-disabled-bg: #f1f1ef;
+
+  --c-danger: #a8331f;
+  --c-danger-bg: #f9e9e6;
+  --c-focus: #0072b2;
+
+  /* Motion — five purposeful moments, nothing looping. */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 400ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-series-1: #56b4e9;
+    --c-series-2: #e69f00;
+    --c-series-3: #40c9a2;
+    --c-series-4: #ef8354;
+    --c-series-5: #dd9ac2;
+    --band-opacity: 0.26;
+
+    --c-ground: #0e1013;
+    --c-surface: #15181c;
+    --c-raised: #1b1f24;
+    --c-ink: #e8eaec;
+    --c-ink-soft: #b4bac1;
+    --c-muted: #868d96;
+    --c-rule: #282d34;
+    --c-rule-soft: #20242a;
+
+    --c-brand: #56b4e9;
+    --c-brand-hover: #7cc6ef;
+    --c-on-brand: #0e1013;
+    --c-brand-bg: #152234;
+
+    --c-live: #74bd98;
+    --c-live-bg: #16281f;
+    --c-stale: #d7ab52;
+    --c-stale-bg: #2a2313;
+    --c-degraded: #e8836d;
+    --c-degraded-bg: #2d1a16;
+    --c-disabled: #868d96;
+    --c-disabled-bg: #1b1f24;
+
+    --c-danger: #e8836d;
+    --c-danger-bg: #2d1a16;
+    --c-focus: #56b4e9;
+  }
+}
+
+:root[data-theme="dark"] {
+  --c-series-1: #56b4e9;
+  --c-series-2: #e69f00;
+  --c-series-3: #40c9a2;
+  --c-series-4: #ef8354;
+  --c-series-5: #dd9ac2;
+  --band-opacity: 0.26;
+
+  --c-ground: #0e1013;
+  --c-surface: #15181c;
+  --c-raised: #1b1f24;
+  --c-ink: #e8eaec;
+  --c-ink-soft: #b4bac1;
+  --c-muted: #868d96;
+  --c-rule: #282d34;
+  --c-rule-soft: #20242a;
+
+  --c-brand: #56b4e9;
+  --c-brand-hover: #7cc6ef;
+  --c-on-brand: #0e1013;
+  --c-brand-bg: #152234;
+
+  --c-live: #74bd98;
+  --c-live-bg: #16281f;
+  --c-stale: #d7ab52;
+  --c-stale-bg: #2a2313;
+  --c-degraded: #e8836d;
+  --c-degraded-bg: #2d1a16;
+  --c-disabled: #868d96;
+  --c-disabled-bg: #1b1f24;
+
+  --c-danger: #e8836d;
+  --c-danger-bg: #2d1a16;
+  --c-focus: #56b4e9;
+}
+
+/* The viewer paints its own ground behind the page, so set ours explicitly. */
+body {
+  background: var(--c-ground);
+  color: var(--c-ink);
+}
+
+/* Figures must align in a forecasting product. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* One visible focus treatment, everywhere. */
+:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,6 +1,6 @@
 # TrendCast AI — Security
 
-**Version:** 1.0 (Phase 11 output)
+**Version:** 1.1 (Phase 15 — serverless credential placement)
 **Status:** Awaiting approval
 
 ---
@@ -19,8 +19,11 @@ leakage, malicious file uploads, and quota abuse.
 - `user_id` is ALWAYS derived from the token — never accepted as a parameter.
 - **Two-layer isolation:** Postgres RLS policies per table (migration 0001) +
   API queries scoped by token user_id. Integration suite proves layer 2.
-- API uses the **anon key + caller JWT**; the service-role key exists only in the
-  offline pipeline sync job (server-to-server, never in API or frontend).
+- API uses the **anon key + caller JWT**, so PostgREST enforces RLS *as the calling
+  user*. The service-role key never reaches the API or the frontend — it lives
+  only in GitHub Actions (decision 028). This is enforced structurally, not by
+  convention: `backend/app/config.py` declares no `supabase_service_role_key`
+  field, so the API cannot read one even if it were present in the environment.
 
 ### 2.2 Secrets Management
 - Secrets only via environment variables; `.env` gitignored; templates
@@ -35,6 +38,23 @@ leakage, malicious file uploads, and quota abuse.
   level as the retired VM path. `signal_events` has RLS with no user policies:
   service-role only, invisible to all authenticated users.
 
+#### Credential placement (serverless pilot)
+
+Three trust zones. A credential appearing outside its zone is a security defect,
+not a configuration preference. **Values are never recorded in this repository.**
+
+| Credential | Zone / store | Why it must not move |
+|---|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | **GitHub Secrets only** | Bypasses RLS on every table for every tenant. In the API it would void layer 1 of tenant isolation; in the browser it would expose all tenants' data. |
+| `SUPABASE_JWT_SECRET` | **Render only** | Signs and verifies auth tokens. Anyone holding it can mint a valid token for an arbitrary `user_id` and impersonate any tenant. |
+| `SUPABASE_ANON_KEY` | Render + Vercel | Publishable by design; safe in the browser *because* RLS constrains it. Not a secret, but still env-supplied. |
+| `FRED_API_KEY`, `TICKETMASTER_API_KEY` | **GitHub Secrets only** | Free-tier quota keys. Only the producers call these APIs; the API and frontend never do. |
+| `NEXT_PUBLIC_*` | Vercel (build-time) | Inlined into the client bundle at build time. Anything placed here is public — permanently, including in already-served bundles. |
+
+Rotation: rotating `SUPABASE_JWT_SECRET` invalidates every live session and
+regenerates the anon and service-role keys with it, so all three zones must be
+updated together and both services redeployed.
+
 ### 2.3 Input Validation & Uploads
 - Pydantic schemas on every request body; `extra="forbid"` on PATCH payloads.
 - CSV/ICS uploads: extension + content-type check, 10MB cap, 100k row / 500 SKU
@@ -45,8 +65,11 @@ leakage, malicious file uploads, and quota abuse.
 
 ### 2.4 Rate Limiting & Quota Protection
 - API: 100 req/min default (slowapi middleware); uploads 10/hour.
-- External free-tier quotas protected by per-source token buckets + backoff;
-  Keepa additionally hard-capped at 10 ASINs/user in BOTH API and a DB trigger.
+- External free-tier quotas protected by per-source token buckets + backoff.
+- The 10-ASIN/user cap remains enforced in BOTH the API and the
+  `tracked_asins_cap` DB trigger, though the marketplace signal itself is
+  dormant for the pilot (decision 025 — Keepa confirmed paid). The schema and
+  cap are retained for the v2 SP-API path.
 
 ### 2.5 Dependency & Supply Chain
 - All dependencies are open-source; version-bounded in requirements files.
@@ -62,7 +85,7 @@ leakage, malicious file uploads, and quota abuse.
 |---|---|---|
 | Sales history | Confidential (per tenant) | RLS-scoped; retained per user; deleted with account |
 | Forecasts | Confidential (derived) | Same RLS scope |
-| API keys (FRED/TM/Keepa) | Secret | Env vars; producers-only; never logged |
+| API keys (FRED / Ticketmaster) | Secret | GitHub Secrets only; producers-only; masked in CI logs, never printed |
 | Signal health | Internal | Read by any authenticated user (non-sensitive) |
 | User profile/geo | PII-adjacent | City-level only; no precise address stored |
 
@@ -74,7 +97,16 @@ leakage, malicious file uploads, and quota abuse.
    move to Redis if scaled).
 3. Uploaded CSVs are validated but not virus-scanned (acceptable for text-only
    CSV at pilot; ClamAV sidecar if requirements change).
-4. Supabase Storage files are kept 90 days then pruned (retention policy).
+4. The private `sales-uploads` Storage bucket exists but is **not currently
+   written to**: uploads are parsed in memory and rows land directly in
+   `sales_daily`, while `uploads.file_path` records a path that is never
+   created. No raw-file retention policy is therefore in force. Either wire the
+   bucket up or drop it — the current state is a documentation/implementation
+   mismatch, not a leak.
+5. Working notes and AI session transcripts are a live leak vector: they tend to
+   accumulate pasted credentials in plaintext. `Notes-*.txt` is gitignored at the
+   repo root, but the repository is **public** — treat any credential that has
+   ever appeared in such a file, or in a chat window, as disclosed and rotate it.
 
 ## 5. Incident Response (pilot)
 
