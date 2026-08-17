@@ -4,6 +4,30 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+/** Supabase auth messages are terse and occasionally cryptic; say what to do next. */
+function friendlyAuthError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("invalid login credentials")) {
+    return "That email and password don't match an account. Check for typos, or sign up instead.";
+  }
+  if (m.includes("email not confirmed")) {
+    return "This account still needs confirming. Open the link in your email, then sign in.";
+  }
+  if (m.includes("user already registered") || m.includes("already been registered")) {
+    return "An account with this email already exists. Switch to Sign in.";
+  }
+  if (m.includes("password should be")) {
+    return "Password must be at least 6 characters.";
+  }
+  if (m.includes("rate limit") || m.includes("too many")) {
+    return "Too many attempts. Wait a minute, then try again.";
+  }
+  if (m.includes("fetch") || m.includes("network")) {
+    return "Couldn't reach the authentication service. Check your connection and try again.";
+  }
+  return message;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -26,12 +50,22 @@ export default function LoginPage() {
     setNotice(null);
     if (mode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setError(error.message);
+      if (error) setError(friendlyAuthError(error.message));
       else router.replace("/dashboard");
     } else {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) setError(error.message);
-      else setNotice("Account created. Check your email to confirm, then sign in.");
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        setError(friendlyAuthError(error.message));
+      } else if (data.session) {
+        // Email confirmation is disabled for the pilot, so sign-up returns a
+        // live session. Send them straight on — telling someone who is already
+        // authenticated to go and check their email strands them here.
+        router.replace("/onboarding");
+      } else {
+        // Confirmation is enabled: no session until the link is opened.
+        setNotice(`Account created. We sent a confirmation link to ${email}. Open it, then sign in.`);
+        setMode("signin");
+      }
     }
     setBusy(false);
   };
