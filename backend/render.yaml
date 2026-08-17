@@ -14,9 +14,10 @@ services:
         sync: false
       - key: SUPABASE_JWT_SECRET
         sync: false
-      - key: KAFKA_BOOTSTRAP_SERVERS
-        sync: false
+      # Serverless mode (decision 027): no broker is deployed, so the API uses
+      # NullProducer (decision 010). KAFKA_BOOTSTRAP_SERVERS is intentionally
+      # absent — config.py defaults it and it is never read while disabled.
       - key: KAFKA_ENABLED
-        value: "false"   # serverless mode (decision 027): sales read from Supabase
+        value: "false"
       - key: CORS_ORIGINS
         sync: false

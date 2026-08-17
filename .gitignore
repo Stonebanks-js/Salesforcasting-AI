@@ -18,6 +18,10 @@ out/
 .env.*
 !.env.example
 
+# Session transcripts / working notes — these have historically contained
+# pasted live credentials. Never commit them; the repo is public.
+Notes-*.txt
+
 # Data / pipeline artifacts
 pipeline/delta/
 mlruns/
